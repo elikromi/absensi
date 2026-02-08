@@ -1,0 +1,7 @@
+{
+  "name": "GeoPresensi Guru",
+  "description": "Aplikasi presensi guru berbasis lokasi dengan fitur check-in/out, tugas tambahan, dan laporan lengkap.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
