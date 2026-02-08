@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, LogOut, FileText, User as UserIcon, Settings, 
   BarChart, Upload, CheckCircle, XCircle, AlertTriangle, 
   Award, Calendar, Menu, Plus, Trash2, Edit, Download, AlertOctagon,
   Eye, Save, Users, BookOpen, Shield, ExternalLink, Clock, Moon, Sun,
-  ChevronRight
+  ChevronRight, Database, RefreshCw, FileDown, Loader2
 } from 'lucide-react';
 import { 
   BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
@@ -26,7 +27,7 @@ const Card = ({ children, className = '' }: { children?: React.ReactNode, classN
 );
 
 const Button = ({ onClick, children, variant = 'primary', disabled = false, className = '' }: any) => {
-  const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 justify-center";
+  const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 justify-center disabled:opacity-50 disabled:cursor-not-allowed";
   const variants = {
     primary: "bg-blue-600 dark:bg-blue-700 text-white hover:bg-blue-700 dark:hover:bg-blue-600 shadow-md shadow-blue-200 dark:shadow-none",
     secondary: "bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-200 border border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700",
@@ -38,7 +39,7 @@ const Button = ({ onClick, children, variant = 'primary', disabled = false, clas
     <button 
       onClick={onClick} 
       disabled={disabled}
-      className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
+      className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}
     >
       {children}
     </button>
@@ -87,35 +88,160 @@ const Modal = ({ isOpen, onClose, title, children }: any) => {
   );
 };
 
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center py-8 text-blue-600">
+    <Loader2 className="w-8 h-8 animate-spin" />
+  </div>
+);
+
 // --- PAGES ---
 
-// 1. LOGIN PAGE
-const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
+// 1. LANDING PAGE & LEADERBOARD
+const Leaderboard = ({ onLoginClick }: { onLoginClick: () => void }) => {
+  const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
+  const [config, setConfig] = useState<SchoolConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      const conf = await DBService.getConfig();
+      setConfig(conf);
+      
+      const records = await DBService.getAttendance();
+      const users = await DBService.getUsers();
+      
+      const pointsMap: Record<string, number> = {};
+      records
+        .filter(r => r.type === AttendanceType.MAIN) 
+        .forEach(r => {
+          pointsMap[r.userId] = (pointsMap[r.userId] || 0) + r.points;
+        });
+
+      const list = users
+        .filter(u => u.role === Role.GURU)
+        .map(u => ({
+          userId: u.id,
+          fullName: u.fullName,
+          totalPoints: pointsMap[u.id] || 0,
+          attendanceCount: records.filter(r => r.userId === u.id && r.type === AttendanceType.MAIN).length
+        }))
+        .sort((a,b) => b.totalPoints - a.totalPoints)
+        .slice(0, 5); // Top 5
+
+      setLeaders(list);
+      setLoading(false);
+    };
+
+    fetchData();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-800 dark:text-gray-100 transition-colors">
+      <nav className="bg-white dark:bg-slate-900 shadow-sm p-4 sticky top-0 z-10 border-b dark:border-slate-800">
+        <div className="max-w-5xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <MapPin className="text-blue-600 dark:text-blue-400" />
+            <span className="font-bold text-lg">GeoPresensi</span>
+          </div>
+          <Button variant="primary" onClick={onLoginClick} className="text-sm px-4 py-1.5">
+            Login Guru/Admin
+          </Button>
+        </div>
+      </nav>
+
+      <div className="bg-blue-600 dark:bg-blue-800 text-white py-16 px-4 text-center">
+        <h1 className="text-3xl md:text-5xl font-bold mb-4">Presensi Guru Modern & Akurat</h1>
+        <p className="opacity-90 max-w-xl mx-auto text-xl font-medium">
+          {config?.schoolName || 'Memuat Data Sekolah...'}
+        </p>
+        <p className="opacity-75 text-sm mt-1">{config?.schoolAddress}</p>
+      </div>
+
+      <div className="max-w-3xl mx-auto -mt-10 p-4 relative z-10">
+        <Card className="shadow-2xl border-none">
+          <div className="flex items-center gap-2 mb-6 justify-center">
+            <Award className="text-yellow-500 w-6 h-6" />
+            <h2 className="text-2xl font-bold text-center">Top Guru Bulan Ini</h2>
+          </div>
+          
+          {loading ? (
+            <LoadingSpinner />
+          ) : (
+            <div className="space-y-4">
+              {leaders.map((l, index) => (
+                <div key={l.userId} className="flex items-center p-4 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700 transform transition hover:-translate-y-1">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mr-4 
+                    ${index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' : 
+                      index === 1 ? 'bg-gray-200 text-gray-700 dark:bg-slate-600 dark:text-gray-200' : 
+                      index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-400' : 'bg-white dark:bg-slate-900 border dark:border-slate-600'}`}>
+                    {index + 1}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-gray-800 dark:text-gray-100">{l.fullName}</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{l.attendanceCount} Kehadiran</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{l.totalPoints}</span>
+                    <span className="text-xs text-gray-400 block">Poin</span>
+                  </div>
+                </div>
+              ))}
+              {leaders.length === 0 && <p className="text-center text-gray-400">Belum ada data presensi.</p>}
+            </div>
+          )}
+        </Card>
+      </div>
+      
+      <div className="text-center text-gray-400 text-sm py-12">
+        &copy; {new Date().getFullYear()} {config?.schoolName || 'GeoPresensi'}. Powered by Supabase.
+      </div>
+    </div>
+  );
+};
+
+// 2. LOGIN PAGE
+const LoginPage = ({ onLogin, onBack }: { onLogin: (u: User) => void, onBack: () => void }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const config = DBService.getConfig();
+  const [loading, setLoading] = useState(false);
+  const [config, setConfig] = useState<SchoolConfig | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => { DBService.getConfig().then(setConfig); }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const users = DBService.getUsers();
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user && user.isActive) {
-      onLogin(user);
-    } else {
-      setError('Username atau password salah / Akun non-aktif');
+    setLoading(true);
+    setError('');
+    
+    try {
+      const users = await DBService.getUsers();
+      const user = users.find(u => u.username === username && u.password === password);
+      if (user && user.isActive) {
+        onLogin(user);
+      } else {
+        setError('Username atau password salah / Akun non-aktif');
+      }
+    } catch (err) {
+      setError('Gagal terhubung ke database.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-xl border-blue-100 dark:border-slate-800">
-        <div className="text-center mb-8">
+      <Card className="w-full max-w-md shadow-xl border-blue-100 dark:border-slate-800 relative">
+        <button onClick={onBack} className="absolute top-4 left-4 text-gray-400 hover:text-gray-600">
+           &larr; Kembali
+        </button>
+        <div className="text-center mb-8 mt-4">
           <div className="bg-blue-100 dark:bg-blue-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
             <MapPin className="text-blue-600 dark:text-blue-400 w-8 h-8" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">GeoPresensi</h1>
-          <p className="font-medium text-blue-700 dark:text-blue-400">{config.schoolName}</p>
+          <p className="font-medium text-blue-700 dark:text-blue-400">{config?.schoolName || 'Loading...'}</p>
         </div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
@@ -137,16 +263,18 @@ const LoginPage = ({ onLogin }: { onLogin: (u: User) => void }) => {
             />
           </div>
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800">{error}</p>}
-          <Button className="w-full">Masuk Aplikasi</Button>
+          <Button className="w-full" disabled={loading}>
+            {loading ? 'Memproses...' : 'Masuk Aplikasi'}
+          </Button>
         </form>
       </Card>
     </div>
   );
 };
 
-// 2. TEACHER DASHBOARD
+// 3. TEACHER DASHBOARD
 const TeacherDashboard = ({ user }: { user: User }) => {
-  const [config, setConfig] = useState<SchoolConfig>(DBService.getConfig());
+  const [config, setConfig] = useState<SchoolConfig | null>(null);
   const [currentLoc, setCurrentLoc] = useState<GeolocationPosition | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
   const [loadingLoc, setLoadingLoc] = useState(false);
@@ -154,26 +282,26 @@ const TeacherDashboard = ({ user }: { user: User }) => {
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [attendanceRate, setAttendanceRate] = useState(100);
   const [tasksDoneToday, setTasksDoneToday] = useState<string[]>([]);
-
-  // For Substitution Form
   const [showSubForm, setShowSubForm] = useState(false);
   const [subReason, setSubReason] = useState('');
   const [subLink, setSubLink] = useState('');
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const currentDay = new Date().getDay(); // 0=Sun, 1=Mon
+  const currentDay = new Date().getDay(); 
 
   useEffect(() => {
     refreshData();
     watchLocation();
   }, []);
 
-  const refreshData = () => {
-    const allRecords = DBService.getAttendance();
+  const refreshData = async () => {
+    const conf = await DBService.getConfig();
+    setConfig(conf);
+
+    const allRecords = await DBService.getAttendance();
     const myRecord = allRecords.find(r => r.userId === user.id && r.date === todayStr && r.type === AttendanceType.MAIN);
     setAttendanceToday(myRecord || null);
     
-    // Check for tasks done today
     const myTasks = allRecords
       .filter(r => r.userId === user.id && r.date === todayStr && r.type === AttendanceType.ADDITIONAL)
       .map(r => r.notes || '');
@@ -182,7 +310,6 @@ const TeacherDashboard = ({ user }: { user: User }) => {
     const myHistory = allRecords.filter(r => r.userId === user.id && r.type === AttendanceType.MAIN).sort((a,b) => b.date.localeCompare(a.date));
     setHistory(myHistory);
 
-    // Calculate Rate
     const totalRecorded = myHistory.length;
     const presentOrLate = myHistory.filter(h => h.status === AttendanceStatus.PRESENT || h.status === AttendanceStatus.LATE).length;
     if (totalRecorded > 0) {
@@ -196,14 +323,16 @@ const TeacherDashboard = ({ user }: { user: User }) => {
       navigator.geolocation.watchPosition(
         (pos) => {
           setCurrentLoc(pos);
-          const dist = GeoService.calculateDistance(
-            pos.coords.latitude,
-            pos.coords.longitude,
-            config.latitude,
-            config.longitude
-          );
-          setDistance(dist);
-          setLoadingLoc(false);
+          DBService.getConfig().then(c => {
+              const dist = GeoService.calculateDistance(
+                pos.coords.latitude,
+                pos.coords.longitude,
+                c.latitude,
+                c.longitude
+              );
+              setDistance(dist);
+              setLoadingLoc(false);
+          });
         },
         (err) => {
           console.error(err);
@@ -214,8 +343,8 @@ const TeacherDashboard = ({ user }: { user: User }) => {
     }
   };
 
-  const handleCheckIn = () => {
-    if (!currentLoc || distance === null) return;
+  const handleCheckIn = async () => {
+    if (!currentLoc || distance === null || !config) return;
     
     if (distance > config.radiusMeters) {
       alert(`Anda berada di luar radius sekolah! (${Math.round(distance)}m)`);
@@ -234,7 +363,8 @@ const TeacherDashboard = ({ user }: { user: User }) => {
     if (hour > config.startHour) status = AttendanceStatus.LATE;
 
     const newRecord: AttendanceRecord = {
-      id: Date.now().toString(),
+      // Use placeholder ID, DB will generate UUID
+      id: '', 
       userId: user.id,
       date: todayStr,
       checkInTime: now.toISOString(),
@@ -247,13 +377,13 @@ const TeacherDashboard = ({ user }: { user: User }) => {
       points: DBService.calculatePoints(status, AttendanceType.MAIN)
     };
 
-    DBService.saveAttendance(newRecord);
+    await DBService.saveAttendance(newRecord);
     refreshData();
     alert('Berhasil Check-in!');
   };
 
-  const handleCheckOut = () => {
-    if (!attendanceToday) return;
+  const handleCheckOut = async () => {
+    if (!attendanceToday || !config) return;
     const now = new Date();
     const hour = now.getHours();
 
@@ -266,16 +396,16 @@ const TeacherDashboard = ({ user }: { user: User }) => {
       ...attendanceToday,
       checkOutTime: now.toISOString()
     };
-    DBService.saveAttendance(updatedRecord);
+    await DBService.saveAttendance(updatedRecord);
     refreshData();
     alert('Berhasil Check-out!');
   };
 
-  const handleAdditionalTask = (role: string) => {
+  const handleAdditionalTask = async (role: string) => {
     if (tasksDoneToday.includes(role)) return;
 
     const record: AttendanceRecord = {
-      id: Date.now().toString(),
+      id: '',
       userId: user.id,
       date: todayStr,
       checkInTime: new Date().toISOString(),
@@ -288,13 +418,13 @@ const TeacherDashboard = ({ user }: { user: User }) => {
       points: 5,
       notes: role
     };
-    DBService.saveAttendance(record);
+    await DBService.saveAttendance(record);
     refreshData();
   };
 
-  const submitSubstitution = () => {
+  const submitSubstitution = async () => {
     const newRecord: AttendanceRecord = {
-      id: Date.now().toString(),
+      id: '',
       userId: user.id,
       date: todayStr,
       checkInTime: null,
@@ -308,10 +438,12 @@ const TeacherDashboard = ({ user }: { user: User }) => {
       notes: subReason,
       substitutionLink: subLink
     };
-    DBService.saveAttendance(newRecord);
+    await DBService.saveAttendance(newRecord);
     refreshData();
     setShowSubForm(false);
   };
+
+  if (!config) return <LoadingSpinner />;
 
   // Determine working day
   const isWorkingDay = user.specificActiveDays && user.specificActiveDays.length > 0
@@ -511,12 +643,13 @@ const TeacherDashboard = ({ user }: { user: User }) => {
   );
 };
 
-// 3. ADMIN DASHBOARD
+// 4. ADMIN DASHBOARD
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'reports' | 'settings'>('overview');
-  const [users, setUsers] = useState<User[]>(DBService.getUsers());
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>(DBService.getAttendance());
-  const [config, setConfig] = useState<SchoolConfig>(DBService.getConfig());
+  const [users, setUsers] = useState<User[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [config, setConfig] = useState<SchoolConfig | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // CRUD Teacher State
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -524,22 +657,29 @@ const AdminDashboard = () => {
   const [formData, setFormData] = useState<Partial<User>>({});
   
   // Settings State
-  const [editConfig, setEditConfig] = useState<SchoolConfig>(config);
+  const [editConfig, setEditConfig] = useState<SchoolConfig | null>(null);
 
   // Report State
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [filterTeacher, setFilterTeacher] = useState<string>('all');
   const [editingAttendance, setEditingAttendance] = useState<AttendanceRecord | null>(null);
   const [viewingTaskUrl, setViewingTaskUrl] = useState<string | null>(null);
-  
-  // Dashboard Leaderboard State
   const [lbCategory, setLbCategory] = useState<'Guru' | 'Wali Kelas' | 'Wakasek'>('Guru');
 
-  const refresh = () => {
-    setUsers(DBService.getUsers());
-    setAttendance(DBService.getAttendance());
-    setConfig(DBService.getConfig());
-    setEditConfig(DBService.getConfig());
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const refresh = async () => {
+    setLoading(true);
+    const u = await DBService.getUsers();
+    setUsers(u);
+    const a = await DBService.getAttendance();
+    setAttendance(a);
+    const c = await DBService.getConfig();
+    setConfig(c);
+    setEditConfig(c);
+    setLoading(false);
   };
 
   const handleExport = () => {
@@ -547,11 +687,11 @@ const AdminDashboard = () => {
   };
 
   // --- USER CRUD HANDLERS ---
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!formData.username || !formData.fullName) return alert('Data tidak lengkap');
     
     const newUser: User = {
-      id: editingUser ? editingUser.id : Date.now().toString(),
+      id: editingUser ? editingUser.id : '', // Let DB handle ID gen if empty
       username: formData.username,
       password: formData.password || editingUser?.password || '123456',
       fullName: formData.fullName,
@@ -563,14 +703,14 @@ const AdminDashboard = () => {
       specificActiveDays: formData.specificActiveDays
     };
     
-    DBService.saveUser(newUser);
+    await DBService.saveUser(newUser);
     refresh();
     setIsUserModalOpen(false);
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = async (id: string) => {
     if (confirm('Yakin ingin menghapus guru ini?')) {
-      DBService.deleteUser(id);
+      await DBService.deleteUser(id);
       refresh();
     }
   };
@@ -580,70 +720,61 @@ const AdminDashboard = () => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const text = evt.target?.result as string;
       const lines = text.split('\n');
       let count = 0;
-      lines.forEach((line, idx) => {
-        if (idx === 0) return; // Skip header
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i];
         const cols = line.split(',');
         if (cols.length >= 2) {
           const u: User = {
-            id: Date.now().toString() + idx,
+            id: '',
             fullName: cols[0]?.trim(),
             username: cols[1]?.trim(),
             password: cols[2]?.trim() || '123456',
             nuptk: cols[3]?.trim() || '',
             role: Role.GURU,
-            isActive: true
+            isActive: true,
+            subjects: cols[4] ? cols[4].split(',').map(s=>s.trim()) : [],
+            additionalRoles: cols[5] ? cols[5].split(',').map(s=>s.trim()) : []
           };
-          DBService.saveUser(u);
+          await DBService.saveUser(u);
           count++;
         }
-      });
+      }
       alert(`Berhasil import ${count} guru.`);
       refresh();
     };
     reader.readAsText(file);
   };
 
-  // --- REPORT HANDLERS ---
   const filteredAttendance = attendance.filter(a => {
     const monthMatch = a.date.startsWith(reportMonth);
     const teacherMatch = filterTeacher === 'all' || a.userId === filterTeacher;
     return monthMatch && teacherMatch;
   });
 
-  const handleUpdateStatus = (record: AttendanceRecord, newStatus: AttendanceStatus) => {
+  const handleUpdateStatus = async (record: AttendanceRecord, newStatus: AttendanceStatus) => {
     const updated = { ...record, status: newStatus };
-    DBService.saveAttendance(updated);
+    await DBService.saveAttendance(updated);
     setEditingAttendance(null);
     refresh();
   };
 
-  // --- SETTINGS HANDLERS ---
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
+    if (!editConfig) return;
     if (editConfig.startHour >= editConfig.endHour || editConfig.minCheckOutHour >= editConfig.endHour) {
       alert('Format waktu tidak valid! Pastikan Jam Mulai < Pulang < Selesai.');
       return;
     }
-    DBService.updateConfig(editConfig);
+    await DBService.updateConfig(editConfig);
     setConfig(editConfig);
-    alert('Pengaturan disimpan');
+    alert('Pengaturan disimpan ke Cloud');
   };
 
-  const handleResetDB = () => {
-    if (confirm('PERINGATAN: Ini akan menghapus SEMUA data guru dan presensi. Lanjutkan?')) {
-      if (confirm('Apakah anda benar-benar yakin? Tindakan ini tidak bisa dibatalkan.')) {
-        DBService.resetDatabase();
-        window.location.reload();
-      }
-    }
-  };
-
-  // User toggle day logic (for specific teacher)
   const toggleUserDay = (dayIndex: number) => {
-    const current = formData.specificActiveDays || config.activeDays || [];
+    const current = formData.specificActiveDays || config?.activeDays || [];
     const newDays = current.includes(dayIndex)
       ? current.filter(d => d !== dayIndex)
       : [...current, dayIndex];
@@ -669,6 +800,8 @@ const AdminDashboard = () => {
       .slice(0, 5);
   };
 
+  if (loading) return <LoadingSpinner />;
+
   return (
     <div className="space-y-6 pb-20 text-gray-800 dark:text-gray-100">
       {/* HEADER & TABS */}
@@ -689,7 +822,7 @@ const AdminDashboard = () => {
           ))}
         </div>
         <div className="flex gap-2">
-           <p className="text-sm font-bold text-gray-500 dark:text-slate-400 self-center hidden md:block">{config.schoolName}</p>
+           <p className="text-sm font-bold text-gray-500 dark:text-slate-400 self-center hidden md:block">{config?.schoolName}</p>
            <Button onClick={handleExport} variant="outline" className="text-sm">
             <Download className="w-4 h-4" /> Excel
           </Button>
@@ -791,9 +924,21 @@ const AdminDashboard = () => {
 
       {activeTab === 'teachers' && (
         <Card>
-           <div className="flex justify-between items-center mb-4">
+           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
              <h3 className="font-bold text-gray-700 dark:text-gray-200">Manajemen Data Guru</h3>
-             <div className="flex gap-2">
+             <div className="flex flex-wrap gap-2">
+                <Button onClick={() => {
+                  const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(DBService.getTeacherCSVTemplate());
+                  const encodedUri = encodeURI(csvContent);
+                  const link = document.createElement("a");
+                  link.setAttribute("href", encodedUri);
+                  link.setAttribute("download", "template_guru.csv");
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+                }} variant="secondary" className="text-xs">
+                   <FileDown className="w-4 h-4" /> Template CSV
+                </Button>
                 <label className="cursor-pointer bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2">
                   <Upload className="w-4 h-4" /> Import CSV
                   <input type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
@@ -988,94 +1133,96 @@ const AdminDashboard = () => {
       {/* SETTINGS TAB */}
       {activeTab === 'settings' && (
         <div className="space-y-6 max-w-3xl mx-auto">
+          {/* NOTE: Backup/Restore is disabled because Supabase manages data integrity */}
           <Card>
             <h3 className="font-bold mb-4 text-lg border-b dark:border-slate-700 pb-2 text-gray-800 dark:text-white flex items-center gap-2">
               <Settings className="w-5 h-5" /> Identitas & Lokasi
             </h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                   <label className="block text-sm mb-1 text-gray-600 dark:text-slate-300">Nama Sekolah</label>
-                   <Input 
-                     type="text" 
-                     value={editConfig.schoolName || ''}
-                     onChange={e => setEditConfig({...editConfig, schoolName: e.target.value})}
-                   />
+            {editConfig && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm mb-1 text-gray-600 dark:text-slate-300">Nama Sekolah</label>
+                    <Input 
+                      type="text" 
+                      value={editConfig.schoolName || ''}
+                      onChange={e => setEditConfig({...editConfig, schoolName: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1 text-gray-600 dark:text-slate-300">Alamat</label>
+                    <Input 
+                      type="text" 
+                      value={editConfig.schoolAddress || ''}
+                      onChange={e => setEditConfig({...editConfig, schoolAddress: e.target.value})}
+                    />
+                  </div>
                 </div>
-                <div>
-                   <label className="block text-sm mb-1 text-gray-600 dark:text-slate-300">Alamat</label>
-                   <Input 
-                     type="text" 
-                     value={editConfig.schoolAddress || ''}
-                     onChange={e => setEditConfig({...editConfig, schoolAddress: e.target.value})}
-                   />
+
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                  <h4 className="font-medium text-blue-700 dark:text-blue-400 mb-3 text-sm">Titik Koordinat Sekolah</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">Latitude</label>
+                      <Input type="number" step="any" value={editConfig.latitude} onChange={e => setEditConfig({...editConfig, latitude: parseFloat(e.target.value)})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">Longitude</label>
+                      <Input type="number" step="any" value={editConfig.longitude} onChange={e => setEditConfig({...editConfig, longitude: parseFloat(e.target.value)})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">Radius (Meter)</label>
+                      <Input type="number" value={editConfig.radiusMeters} onChange={e => setEditConfig({...editConfig, radiusMeters: parseInt(e.target.value)})} />
+                    </div>
+                  </div>
                 </div>
               </div>
+            )}
+          </Card>
 
-              <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/30">
-                <h4 className="font-medium text-blue-700 dark:text-blue-400 mb-3 text-sm">Titik Koordinat Sekolah</h4>
-                <div className="grid grid-cols-3 gap-4">
+          {editConfig && (
+            <Card>
+              <h3 className="font-bold mb-4 text-lg border-b dark:border-slate-700 pb-2 text-gray-800 dark:text-white flex items-center gap-2">
+                <Clock className="w-5 h-5" /> Aturan Waktu Presensi
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl border border-green-100 dark:border-green-900/30 flex flex-col justify-between">
                   <div>
-                    <label className="block text-xs font-semibold mb-1">Latitude</label>
-                    <Input type="number" step="any" value={editConfig.latitude} onChange={e => setEditConfig({...editConfig, latitude: parseFloat(e.target.value)})} />
+                      <label className="block text-sm font-bold text-green-800 dark:text-green-300 mb-1">Jam Buka Absen</label>
+                      <p className="text-xs text-green-600 dark:text-green-400 mb-2">Waktu paling awal guru bisa melakukan Check-In.</p>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1">Longitude</label>
-                    <Input type="number" step="any" value={editConfig.longitude} onChange={e => setEditConfig({...editConfig, longitude: parseFloat(e.target.value)})} />
+                  <div className="flex items-center gap-2">
+                    <Input type="number" className="text-center text-lg font-bold" min={0} max={23} value={editConfig.startHour} onChange={e => setEditConfig({...editConfig, startHour: parseInt(e.target.value)})} />
+                    <span className="text-sm font-medium">.00 WIB</span>
                   </div>
+                </div>
+                
+                <div className="bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-xl border border-yellow-100 dark:border-yellow-900/30 flex flex-col justify-between">
                   <div>
-                    <label className="block text-xs font-semibold mb-1">Radius (Meter)</label>
-                    <Input type="number" value={editConfig.radiusMeters} onChange={e => setEditConfig({...editConfig, radiusMeters: parseInt(e.target.value)})} />
+                      <label className="block text-sm font-bold text-yellow-800 dark:text-yellow-300 mb-1">Min. Jam Pulang</label>
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2">Guru tidak bisa Check-Out sebelum jam ini.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" className="text-center text-lg font-bold" min={0} max={23} value={editConfig.minCheckOutHour} onChange={e => setEditConfig({...editConfig, minCheckOutHour: parseInt(e.target.value)})} />
+                    <span className="text-sm font-medium">.00 WIB</span>
+                  </div>
+                </div>
+
+                <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-900/30 flex flex-col justify-between">
+                  <div>
+                      <label className="block text-sm font-bold text-red-800 dark:text-red-300 mb-1">Batas Akhir Ops.</label>
+                      <p className="text-xs text-red-600 dark:text-red-400 mb-2">Batas sistem menutup presensi harian.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" className="text-center text-lg font-bold" min={0} max={23} value={editConfig.endHour} onChange={e => setEditConfig({...editConfig, endHour: parseInt(e.target.value)})} />
+                    <span className="text-sm font-medium">.00 WIB</span>
                   </div>
                 </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          )}
 
-          <Card>
-             <h3 className="font-bold mb-4 text-lg border-b dark:border-slate-700 pb-2 text-gray-800 dark:text-white flex items-center gap-2">
-               <Clock className="w-5 h-5" /> Aturan Waktu Presensi
-             </h3>
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-               <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl border border-green-100 dark:border-green-900/30 flex flex-col justify-between">
-                 <div>
-                    <label className="block text-sm font-bold text-green-800 dark:text-green-300 mb-1">Jam Buka Absen</label>
-                    <p className="text-xs text-green-600 dark:text-green-400 mb-2">Waktu paling awal guru bisa melakukan Check-In.</p>
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <Input type="number" className="text-center text-lg font-bold" min={0} max={23} value={editConfig.startHour} onChange={e => setEditConfig({...editConfig, startHour: parseInt(e.target.value)})} />
-                   <span className="text-sm font-medium">.00 WIB</span>
-                 </div>
-               </div>
-               
-               <div className="bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-xl border border-yellow-100 dark:border-yellow-900/30 flex flex-col justify-between">
-                 <div>
-                    <label className="block text-sm font-bold text-yellow-800 dark:text-yellow-300 mb-1">Min. Jam Pulang</label>
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2">Guru tidak bisa Check-Out sebelum jam ini.</p>
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <Input type="number" className="text-center text-lg font-bold" min={0} max={23} value={editConfig.minCheckOutHour} onChange={e => setEditConfig({...editConfig, minCheckOutHour: parseInt(e.target.value)})} />
-                   <span className="text-sm font-medium">.00 WIB</span>
-                 </div>
-               </div>
-
-               <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-xl border border-red-100 dark:border-red-900/30 flex flex-col justify-between">
-                 <div>
-                    <label className="block text-sm font-bold text-red-800 dark:text-red-300 mb-1">Batas Akhir Ops.</label>
-                    <p className="text-xs text-red-600 dark:text-red-400 mb-2">Batas sistem menutup presensi harian.</p>
-                 </div>
-                 <div className="flex items-center gap-2">
-                   <Input type="number" className="text-center text-lg font-bold" min={0} max={23} value={editConfig.endHour} onChange={e => setEditConfig({...editConfig, endHour: parseInt(e.target.value)})} />
-                   <span className="text-sm font-medium">.00 WIB</span>
-                 </div>
-               </div>
-             </div>
-          </Card>
-
-          <div className="flex justify-between mt-4">
-            <Button onClick={handleResetDB} variant="danger" className="text-sm">
-              <Trash2 className="w-4 h-4" /> Kosongkan Database
-            </Button>
+          <div className="flex justify-end mt-4">
             <Button onClick={handleSaveConfig}>
               <Save className="w-4 h-4" /> Simpan Konfigurasi
             </Button>
@@ -1106,11 +1253,11 @@ const AdminDashboard = () => {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Mata Pelajaran</label>
-              <Input type="text" placeholder="Pisahkan dengan koma" value={formData.subjects?.toString() || ''} onChange={e => setFormData({...formData, subjects: e.target.value})} />
+              <Input type="text" placeholder="Pisahkan dengan koma" value={formData.subjects?.toString() || ''} onChange={e => setFormData({...formData, subjects: e.target.value.split(',')})} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Tugas Tambahan</label>
-              <Input type="text" placeholder="Contoh: Wali Kelas, Pembina OSIS" value={formData.additionalRoles?.toString() || ''} onChange={e => setFormData({...formData, additionalRoles: e.target.value})} />
+              <Input type="text" placeholder="Contoh: Wali Kelas, Pembina OSIS" value={formData.additionalRoles?.toString() || ''} onChange={e => setFormData({...formData, additionalRoles: e.target.value.split(',')})} />
             </div>
             <div>
                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Hari Wajib Hadir</label>
@@ -1119,7 +1266,7 @@ const AdminDashboard = () => {
                     const isSpecific = formData.specificActiveDays && formData.specificActiveDays.length > 0;
                     const isActive = isSpecific 
                       ? formData.specificActiveDays!.includes(idx) 
-                      : config.activeDays.includes(idx);
+                      : (config?.activeDays || []).includes(idx);
                     
                     let btnClass = 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500';
                     if (isActive) {
@@ -1185,216 +1332,102 @@ const AdminDashboard = () => {
   );
 };
 
-// 4. LEADERBOARD (PUBLIC LANDING)
-const Leaderboard = ({ onLoginClick }: { onLoginClick: () => void }) => {
-  const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
-  const config = DBService.getConfig();
+// --- MAIN APP COMPONENT ---
 
-  useEffect(() => {
-    const records = DBService.getAttendance();
-    const users = DBService.getUsers();
-    
-    // Calculate total points (ONLY MAIN ATTENDANCE)
-    const pointsMap: Record<string, number> = {};
-    records
-      .filter(r => r.type === AttendanceType.MAIN) 
-      .forEach(r => {
-        pointsMap[r.userId] = (pointsMap[r.userId] || 0) + r.points;
-      });
-
-    const list = users
-      .filter(u => u.role === Role.GURU)
-      .map(u => ({
-        userId: u.id,
-        fullName: u.fullName,
-        totalPoints: pointsMap[u.id] || 0,
-        attendanceCount: records.filter(r => r.userId === u.id && r.type === AttendanceType.MAIN).length
-      }))
-      .sort((a,b) => b.totalPoints - a.totalPoints)
-      .slice(0, 5); // Top 5
-
-    setLeaders(list);
-  }, []);
-
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-800 dark:text-gray-100 transition-colors">
-      {/* Navbar */}
-      <nav className="bg-white dark:bg-slate-900 shadow-sm p-4 sticky top-0 z-10 border-b dark:border-slate-800">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <MapPin className="text-blue-600 dark:text-blue-400" />
-            <span className="font-bold text-lg">GeoPresensi</span>
-          </div>
-          <Button variant="primary" onClick={onLoginClick} className="text-sm px-4 py-1.5">
-            Login Guru/Admin
-          </Button>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <div className="bg-blue-600 dark:bg-blue-800 text-white py-12 px-4 text-center">
-        <h1 className="text-3xl md:text-4xl font-bold mb-4">Presensi Guru Modern & Akurat</h1>
-        <p className="opacity-90 max-w-xl mx-auto text-xl font-medium">
-          {config.schoolName}
-        </p>
-        <p className="opacity-75 text-sm mt-1">{config.schoolAddress}</p>
-      </div>
-
-      {/* Leaderboard Section */}
-      <div className="max-w-3xl mx-auto -mt-8 p-4">
-        <Card className="shadow-lg">
-          <div className="flex items-center gap-2 mb-6 justify-center">
-            <Award className="text-yellow-500 w-6 h-6" />
-            <h2 className="text-2xl font-bold text-center">Top Guru Bulan Ini</h2>
-          </div>
-          
-          <div className="space-y-4">
-            {leaders.map((l, index) => (
-              <div key={l.userId} className="flex items-center p-4 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700 transform transition hover:-translate-y-1">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold mr-4 
-                  ${index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' : 
-                    index === 1 ? 'bg-gray-200 text-gray-700 dark:bg-slate-600 dark:text-gray-200' : 
-                    index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-400' : 'bg-white dark:bg-slate-900 border dark:border-slate-600'}`}>
-                  {index + 1}
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-gray-800 dark:text-gray-100">{l.fullName}</h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{l.attendanceCount} Kehadiran</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{l.totalPoints}</span>
-                  <span className="text-xs text-gray-400 block">Poin</span>
-                </div>
-              </div>
-            ))}
-            {leaders.length === 0 && <p className="text-center text-gray-400">Belum ada data presensi.</p>}
-          </div>
-        </Card>
-      </div>
-      
-      {/* Footer */}
-      <div className="text-center text-gray-400 text-sm py-8">
-        &copy; {new Date().getFullYear()} {config.schoolName}.
-      </div>
-    </div>
-  );
-};
-
-// MAIN APP LAYOUT
 const App = () => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [view, setView] = useState<'landing' | 'login' | 'dashboard'>('landing');
   const [darkMode, setDarkMode] = useState(false);
-  const config = DBService.getConfig();
 
-  // Check session and theme on load
   useEffect(() => {
-    const session = localStorage.getItem('app_session');
-    if (session) {
-      setCurrentUser(JSON.parse(session));
+    // Check local storage for persisted session
+    const savedUser = localStorage.getItem('geo_presensi_user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
       setView('dashboard');
     }
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    
+    // Check dark mode preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       setDarkMode(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, []);
+  }, [darkMode]);
 
-  const toggleTheme = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    localStorage.setItem('theme', newMode ? 'dark' : 'light');
-    if (newMode) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  };
-
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('app_session', JSON.stringify(user));
+  const handleLogin = (loggedInUser: User) => {
+    setUser(loggedInUser);
+    localStorage.setItem('geo_presensi_user', JSON.stringify(loggedInUser));
     setView('dashboard');
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('app_session');
+    setUser(null);
+    localStorage.removeItem('geo_presensi_user');
     setView('landing');
   };
 
-  // View Router
+  // View Routing
   if (view === 'landing') {
     return <Leaderboard onLoginClick={() => setView('login')} />;
   }
 
   if (view === 'login') {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage onLogin={handleLogin} onBack={() => setView('landing')} />;
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors duration-200">
-      {/* Mobile Header */}
-      <div className="md:hidden bg-white dark:bg-slate-900 shadow-sm p-4 flex justify-between items-center border-b dark:border-slate-800">
-        <span className="font-bold text-blue-600 dark:text-blue-400">GeoPresensi</span>
-        <div className="flex gap-4">
-           <button onClick={toggleTheme} className="text-gray-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400">
-             {darkMode ? <Sun className="w-5 h-5"/> : <Moon className="w-5 h-5"/>}
-           </button>
-           <button onClick={handleLogout}><LogOut className="w-5 h-5 text-gray-600 dark:text-gray-400" /></button>
-        </div>
-      </div>
+  // Dashboard View (User is logged in)
+  if (!user) return <LoginPage onLogin={handleLogin} onBack={() => setView('landing')} />;
 
-      {/* Sidebar Desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-900 border-r dark:border-slate-800 h-screen sticky top-0 overflow-y-auto transition-colors">
-        <div className="p-6">
-          <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-xl">
-            <MapPin /> GeoPresensi
-          </div>
-          <p className="text-xs text-gray-400 mt-2">{config.schoolName}</p>
-        </div>
-        
-        <div className="flex-1 px-4 py-2 space-y-2">
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-800 dark:text-blue-300 mb-6 border border-blue-100 dark:border-blue-900/30">
-            <p className="text-xs uppercase font-semibold text-blue-600 dark:text-blue-400 opacity-70 mb-1">Login Sebagai</p>
-            <p className="font-bold truncate">{currentUser?.fullName}</p>
-            <p className="text-xs capitalize mt-1 badge inline-block px-2 py-0.5 bg-white dark:bg-slate-800 rounded border border-blue-200 dark:border-slate-600">
-              {currentUser?.role}
-            </p>
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 transition-colors duration-200">
+      {/* Navbar */}
+      <nav className="bg-white dark:bg-slate-900 border-b dark:border-slate-800 px-4 py-3 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
+              G
+            </div>
+            <span className="font-bold text-gray-800 dark:text-white hidden sm:block">GeoPresensi</span>
           </div>
           
-          {currentUser?.role === Role.ADMIN && (
-             <div className="space-y-1">
-                <p className="px-3 text-xs font-bold text-gray-400 dark:text-slate-500 uppercase mt-4 mb-2">Menu Admin</p>
-             </div>
-          )}
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-slate-400"
+            >
+              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+            
+            <div className="flex items-center gap-3 pl-4 border-l dark:border-slate-700">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-gray-800 dark:text-white">{user.fullName}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400 capitalize">{user.role}</p>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Keluar"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div className="p-4 border-t dark:border-slate-800 space-y-2">
-          <button 
-            onClick={toggleTheme}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-full p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800"
-          >
-             {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-             {darkMode ? 'Light Mode' : 'Dark Mode'}
-          </button>
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors w-full p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-          >
-            <LogOut className="w-4 h-4" /> Keluar
-          </button>
-        </div>
-      </aside>
+      </nav>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        {currentUser?.role === Role.ADMIN ? (
+      <main className="max-w-7xl mx-auto p-4 md:p-6">
+        {user.role === Role.ADMIN ? (
           <AdminDashboard />
-        ) : currentUser?.role === Role.GURU ? (
-          <TeacherDashboard user={currentUser} />
         ) : (
-          <div>Role Unknown</div>
+          <TeacherDashboard user={user} />
         )}
       </main>
     </div>
